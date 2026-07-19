@@ -88,12 +88,25 @@ final class VolumeRevertGuard {
     /// volume change landed in the last `settleDelay` ms, reverts it retroactively — this
     /// handles the common case where AVRCP beats HID to the main thread.
     func armFromRemoteButton() {
+        ensureListener()
         guardUntil = Date().addingTimeInterval(guardWindow)
         if pendingSettle != nil, let baselineValue = baselineVolume {
             pendingSettle?.cancel()
             pendingSettle = nil
             SystemVolume.set(baselineValue)
         }
+    }
+
+    /// Called just before the app itself writes a volume value (synthetic System Volume
+    /// step). The target becomes the baseline so the listener treats the write as expected,
+    /// and the guard window opens so an AVRCP straggler landing right behind it gets
+    /// reverted to the target instead of stacking on top of it.
+    func expect(_ target: Float) {
+        ensureListener()
+        pendingSettle?.cancel()
+        pendingSettle = nil
+        baselineVolume = max(0, min(1, target))
+        guardUntil = Date().addingTimeInterval(guardWindow)
     }
 
     private func ensureListener() {

@@ -654,10 +654,14 @@ class MenuBarManager {
     }
 
     /// One volume increment (mirrors the 1/16 steps of the keyboard volume keys).
+    /// Routed through the revert guard so the listener knows this write is ours and
+    /// reverts any AVRCP straggler back to the stepped value.
     static func stepSystemVolume(up: Bool) {
         let step: Float = 1.0 / 16.0
         let current = SystemVolume.get() ?? 0
-        SystemVolume.set(current + (up ? step : -step))
+        let target = max(0, min(1, current + (up ? step : -step)))
+        VolumeRevertGuard.shared.expect(target)
+        SystemVolume.set(target)
     }
 
     /// Post a synthetic scroll-wheel event. Positive lines scroll up (content down).

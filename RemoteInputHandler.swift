@@ -124,15 +124,12 @@ class RemoteInputHandler {
         let assigned = menuBarManager?.getMapping(for: buttonName) ?? .builtin(.none)
 
         // Volume keys on the Siri Remote also travel over BT AVRCP absolute-volume, which
-        // coreaudiod honors below cghidEventTap. Arm the revert guard on every press so the
-        // CoreAudio listener snaps the level back to the pre-press value — EXCEPT when the
-        // button is assigned to System Volume, where the native AVRCP change IS the action.
+        // coreaudiod honors below cghidEventTap — but that path is unreliable (delayed,
+        // intermittent bursts). Arm the revert guard on every press so native changes get
+        // snapped back; when the button is assigned to System Volume, the synthetic step
+        // (routed through the guard's expect()) is the action.
         if isPressed && (buttonName == "volumeUp" || buttonName == "volumeDown") {
-            if case .builtin(let b) = assigned, b == .systemVolumeUp || b == .systemVolumeDown {
-                // Desired behavior is the native volume change; leave it alone.
-            } else {
-                VolumeRevertGuard.shared.armFromRemoteButton()
-            }
+            VolumeRevertGuard.shared.armFromRemoteButton()
         }
 
         // First key-down after connection: skip so the connect handshake doesn't fire an
@@ -300,13 +297,6 @@ class RemoteInputHandler {
     /// Scroll/volume actions: fire once on press, then auto-repeat while held
     /// (hold-capable buttons only — tap-only buttons get the single step).
     private func handleRepeatAction(_ action: ButtonAction, button: String, pressed: Bool) {
-        // On the physical volume buttons, System Volume means "let the native AVRCP
-        // change through" (the guard is not armed) — no synthetic steps on top.
-        if (button == "volumeUp" || button == "volumeDown"),
-           action == .systemVolumeUp || action == .systemVolumeDown {
-            return
-        }
-
         let perform: () -> Void
         switch action {
         case .systemVolumeUp:   perform = { MenuBarManager.stepSystemVolume(up: true) }
