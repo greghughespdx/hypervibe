@@ -495,8 +495,11 @@ class MenuBarManager {
         alert.window.initialFirstResponder = field
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
-            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { return }
+            // Keep the text verbatim — leading/trailing spaces are intentional (e.g. a
+            // slash command plus trailing space, ready for dictation). Trim only to
+            // reject an effectively-empty entry.
+            let text = field.stringValue
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             swipeMappings[direction] = .customCmd(text)
             saveSwipeMappings()
             rebuildMenu()
