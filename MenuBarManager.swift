@@ -656,15 +656,25 @@ class MenuBarManager {
         }
     }
 
-    /// One volume increment (mirrors the 1/16 steps of the keyboard volume keys).
-    /// Routed through the revert guard so the listener knows this write is ours and
-    /// reverts any AVRCP straggler back to the stepped value.
+    /// One volume increment, synthesized as the keyboard volume aux key (NX_KEYTYPE_SOUND_*).
+    /// Goes through the system's normal volume path: native 1/16 steps, on-screen HUD, and
+    /// no CoreAudio write for the revert guard or device quantization to fight.
     static func stepSystemVolume(up: Bool) {
-        let step: Float = 1.0 / 16.0
-        let current = SystemVolume.get() ?? 0
-        let target = max(0, min(1, current + (up ? step : -step)))
-        VolumeRevertGuard.shared.expect(target)
-        SystemVolume.set(target)
+        let key: Int32 = up ? 0 : 1  // NX_KEYTYPE_SOUND_UP / NX_KEYTYPE_SOUND_DOWN
+        for keyDown in [true, false] {
+            let stateByte = keyDown ? 0x0A : 0x0B
+            let data1 = (Int(key) << 16) | (stateByte << 8)
+            let event = NSEvent.otherEvent(with: .systemDefined,
+                                           location: .zero,
+                                           modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(stateByte << 8)),
+                                           timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: 0,
+                                           context: nil,
+                                           subtype: 8,  // NX_SUBTYPE_AUX_CONTROL_BUTTONS
+                                           data1: data1,
+                                           data2: -1)
+            event?.cgEvent?.post(tap: .cghidEventTap)
+        }
     }
 
     /// Post a synthetic scroll-wheel event. Positive lines scroll up (content down).
