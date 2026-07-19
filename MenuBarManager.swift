@@ -656,25 +656,20 @@ class MenuBarManager {
         }
     }
 
-    /// One volume increment, synthesized as the keyboard volume aux key (NX_KEYTYPE_SOUND_*).
-    /// Goes through the system's normal volume path: native 1/16 steps, on-screen HUD, and
-    /// no CoreAudio write for the revert guard or device quantization to fight.
+    /// One volume increment (mirrors the 1/16 steps of the keyboard volume keys), written
+    /// directly via CoreAudio. Synthesizing the keyboard volume aux key is NOT an option
+    /// here: this app boots out com.apple.rcd (see RCDControl), which kills processing of
+    /// synthesized NX_KEYTYPE_SOUND_* events — verified dead on a live system. The write is
+    /// routed through the revert guard's expect() so the listener treats it (and the output
+    /// device's quantized version of it) as ours. Tradeoff: no on-screen volume HUD —
+    /// programmatic CoreAudio changes never show it.
     static func stepSystemVolume(up: Bool) {
-        let key: Int32 = up ? 0 : 1  // NX_KEYTYPE_SOUND_UP / NX_KEYTYPE_SOUND_DOWN
-        for keyDown in [true, false] {
-            let stateByte = keyDown ? 0x0A : 0x0B
-            let data1 = (Int(key) << 16) | (stateByte << 8)
-            let event = NSEvent.otherEvent(with: .systemDefined,
-                                           location: .zero,
-                                           modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(stateByte << 8)),
-                                           timestamp: ProcessInfo.processInfo.systemUptime,
-                                           windowNumber: 0,
-                                           context: nil,
-                                           subtype: 8,  // NX_SUBTYPE_AUX_CONTROL_BUTTONS
-                                           data1: data1,
-                                           data2: -1)
-            event?.cgEvent?.post(tap: .cghidEventTap)
-        }
+        let step: Float = 1.0 / 16.0
+        let current = SystemVolume.get() ?? 0
+        let target = max(0, min(1, current + (up ? step : -step)))
+        VolumeRevertGuard.shared.expect(target)
+        SystemVolume.set(target)
+        rmDebug(String(format: "🔉 volume step %@: %.3f → %.3f", up ? "up" : "down", current, target))
     }
 
     /// Post a synthetic scroll-wheel event. Positive lines scroll up (content down).

@@ -107,6 +107,21 @@ final class VolumeRevertGuard {
         }
     }
 
+    /// Called just before the app itself writes a volume value (synthetic System Volume
+    /// step). The target becomes the baseline so the listener treats the write — and the
+    /// output device's quantized version of it, within matchEpsilon — as expected, and the
+    /// guard window opens so an AVRCP straggler landing right behind it gets reverted to
+    /// the stepped value instead of stacking on top of it.
+    func expect(_ target: Float) {
+        ensureListener()
+        pendingSettle?.cancel()
+        pendingSettle = nil
+        baselineVolume = max(0, min(1, target))
+        guardUntil = Date().addingTimeInterval(guardWindow)
+        lastRevertObserved = nil
+        revertAttempts = 0
+    }
+
     private func ensureListener() {
         guard !listenerInstalled, let id = SystemVolume.defaultOutputDeviceID() else { return }
         listenerDeviceID = id

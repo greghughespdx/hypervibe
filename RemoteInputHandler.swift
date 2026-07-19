@@ -125,15 +125,12 @@ class RemoteInputHandler {
 
         // Volume keys on the Siri Remote also travel over BT AVRCP absolute-volume, which
         // coreaudiod honors below cghidEventTap — but that path is unreliable (delayed,
-        // intermittent bursts), so it is never the action. Arm the revert guard so native
-        // changes get snapped back — EXCEPT when the button is assigned to System Volume,
-        // where the synthetic aux-key step changes the volume and the guard would revert it.
+        // intermittent bursts), so it is never the action. Arm the revert guard on every
+        // press so native changes get snapped back; when the button is assigned to System
+        // Volume, the synthetic CoreAudio step (routed through expect()) is the action and
+        // the guard recognizes it as ours.
         if isPressed && (buttonName == "volumeUp" || buttonName == "volumeDown") {
-            if case .builtin(let b) = assigned, b == .systemVolumeUp || b == .systemVolumeDown {
-                // Synthetic step is the action; leave the guard unarmed.
-            } else {
-                VolumeRevertGuard.shared.armFromRemoteButton()
-            }
+            VolumeRevertGuard.shared.armFromRemoteButton()
         }
 
         // First key-down after connection: skip so the connect handshake doesn't fire an
