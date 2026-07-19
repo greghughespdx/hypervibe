@@ -19,8 +19,6 @@ enum ButtonAction: String, CaseIterable {
     case rightCmd = "Right Command: 3rd-party Voice Dictation"
     case rightOpt = "Right Option: 3rd-party Voice Dictation"
     case trackpadClick = "Mouse Click"
-    case systemVolumeUp = "System Volume Up"
-    case systemVolumeDown = "System Volume Down"
     case scrollUp = "Scroll Up"
     case scrollDown = "Scroll Down"
     case none = "None"
@@ -39,7 +37,7 @@ enum ButtonAction: String, CaseIterable {
     /// buttons — on tap-only buttons they fire a single step per press.
     var repeatsWhileHeld: Bool {
         switch self {
-        case .scrollUp, .scrollDown, .systemVolumeUp, .systemVolumeDown: return true
+        case .scrollUp, .scrollDown: return true
         default: return false
         }
     }
@@ -644,32 +642,12 @@ class MenuBarManager {
                 sendModifierTap(kVK_RightOption, flag: .maskAlternate)
             case .trackpadClick:
                 performClick()
-            case .systemVolumeUp:
-                Self.stepSystemVolume(up: true)
-            case .systemVolumeDown:
-                Self.stepSystemVolume(up: false)
             case .scrollUp:
                 Self.postScroll(lines: 3)
             case .scrollDown:
                 Self.postScroll(lines: -3)
             }
         }
-    }
-
-    /// One volume increment (mirrors the 1/16 steps of the keyboard volume keys), written
-    /// directly via CoreAudio. Synthesizing the keyboard volume aux key is NOT an option
-    /// here: this app boots out com.apple.rcd (see RCDControl), which kills processing of
-    /// synthesized NX_KEYTYPE_SOUND_* events — verified dead on a live system. The write is
-    /// routed through the revert guard's expect() so the listener treats it (and the output
-    /// device's quantized version of it) as ours. Tradeoff: no on-screen volume HUD —
-    /// programmatic CoreAudio changes never show it.
-    static func stepSystemVolume(up: Bool) {
-        let step: Float = 1.0 / 16.0
-        let current = SystemVolume.get() ?? 0
-        let target = max(0, min(1, current + (up ? step : -step)))
-        VolumeRevertGuard.shared.expect(target)
-        SystemVolume.set(target)
-        rmDebug(String(format: "🔉 volume step %@: %.3f → %.3f", up ? "up" : "down", current, target))
     }
 
     /// Post a synthetic scroll-wheel event. Positive lines scroll up (content down).

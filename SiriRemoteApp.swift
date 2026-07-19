@@ -26,10 +26,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // directly, which launches Music.app. Suspend rcd for this session; restored on exit.
         RCDControl.suspend()
 
-        // Install the CoreAudio volume listener and capture the starting baseline now, so
-        // the first remote volume press has something to revert to.
-        VolumeRevertGuard.shared.prewarm()
-
         // Run as menu bar app (no dock icon)
         NSApp.setActivationPolicy(.accessory)
         

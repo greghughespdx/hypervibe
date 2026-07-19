@@ -124,11 +124,8 @@ class RemoteInputHandler {
         let assigned = menuBarManager?.getMapping(for: buttonName) ?? .builtin(.none)
 
         // Volume keys on the Siri Remote also travel over BT AVRCP absolute-volume, which
-        // coreaudiod honors below cghidEventTap — but that path is unreliable (delayed,
-        // intermittent bursts), so it is never the action. Arm the revert guard on every
-        // press so native changes get snapped back; when the button is assigned to System
-        // Volume, the synthetic CoreAudio step (routed through expect()) is the action and
-        // the guard recognizes it as ours.
+        // coreaudiod honors below cghidEventTap. Arm the revert guard on every press so the
+        // CoreAudio listener snaps the level back to the pre-press value.
         if isPressed && (buttonName == "volumeUp" || buttonName == "volumeDown") {
             VolumeRevertGuard.shared.armFromRemoteButton()
         }
@@ -287,7 +284,7 @@ class RemoteInputHandler {
                 sendKey(kVK_ANSI_C, flags: .maskControl)
             case .spaceKey, .rightCmd, .rightOpt:
                 break // handled by handleHoldAction
-            case .systemVolumeUp, .systemVolumeDown, .scrollUp, .scrollDown:
+            case .scrollUp, .scrollDown:
                 break // handled by handleRepeatAction
             case .trackpadClick:
                 cursorController.performClick()
@@ -300,8 +297,6 @@ class RemoteInputHandler {
     private func handleRepeatAction(_ action: ButtonAction, button: String, pressed: Bool) {
         let perform: () -> Void
         switch action {
-        case .systemVolumeUp:   perform = { MenuBarManager.stepSystemVolume(up: true) }
-        case .systemVolumeDown: perform = { MenuBarManager.stepSystemVolume(up: false) }
         case .scrollUp:         perform = { MenuBarManager.postScroll(lines: 3) }
         case .scrollDown:       perform = { MenuBarManager.postScroll(lines: -3) }
         default: return

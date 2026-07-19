@@ -74,16 +74,6 @@ final class VolumeRevertGuard {
     private var listenerInstalled = false
     private var listenerDeviceID: AudioObjectID = 0
 
-    /// Output devices quantize volume to their own discrete steps, so a reverted value can
-    /// come back slightly different from the baseline we wrote. Treat anything this close
-    /// as "matches baseline" (device steps are ~1/16 = 0.0625; this stays well under one).
-    private let matchEpsilon: Float = 0.02
-    /// Storm breaker: if the device refuses to hold our revert value (quantization snaps it
-    /// back), stop fighting after this many attempts and adopt the device's value.
-    private let maxRevertAttempts = 2
-    private var lastRevertObserved: Float?
-    private var revertAttempts = 0
-
     /// Install the CoreAudio listener and capture the starting baseline at app launch,
     /// so the first remote volume press has something to revert to.
     func prewarm() {
@@ -98,28 +88,12 @@ final class VolumeRevertGuard {
     /// volume change landed in the last `settleDelay` ms, reverts it retroactively — this
     /// handles the common case where AVRCP beats HID to the main thread.
     func armFromRemoteButton() {
-        ensureListener()
         guardUntil = Date().addingTimeInterval(guardWindow)
         if pendingSettle != nil, let baselineValue = baselineVolume {
             pendingSettle?.cancel()
             pendingSettle = nil
             SystemVolume.set(baselineValue)
         }
-    }
-
-    /// Called just before the app itself writes a volume value (synthetic System Volume
-    /// step). The target becomes the baseline so the listener treats the write — and the
-    /// output device's quantized version of it, within matchEpsilon — as expected, and the
-    /// guard window opens so an AVRCP straggler landing right behind it gets reverted to
-    /// the stepped value instead of stacking on top of it.
-    func expect(_ target: Float) {
-        ensureListener()
-        pendingSettle?.cancel()
-        pendingSettle = nil
-        baselineVolume = max(0, min(1, target))
-        guardUntil = Date().addingTimeInterval(guardWindow)
-        lastRevertObserved = nil
-        revertAttempts = 0
     }
 
     private func ensureListener() {
@@ -147,31 +121,13 @@ final class VolumeRevertGuard {
         let inWindow = Date() < guardUntil
         rmDebug("🔊 listener: current=\(String(format: "%.3f", current)) baseline=\(baselineStr) inGuard=\(inWindow)")
 
-        // Our own revert write echoes back as a listener callback; noop when it matches
-        // (within device-quantization tolerance).
-        if let baseline = baselineVolume, abs(current - baseline) < matchEpsilon {
+        // Our own revert write echoes back as a listener callback; noop when it matches.
+        if let baseline = baselineVolume, abs(current - baseline) < 0.001 {
             rmDebug("🔊 listener: match baseline, noop")
-            lastRevertObserved = nil
-            revertAttempts = 0
             return
         }
 
         if inWindow, let baseline = baselineVolume {
-            // Same off-baseline value observed again right after a revert = the device
-            // quantized our write away. Stop fighting and adopt the device's value.
-            if let last = lastRevertObserved, abs(current - last) < 0.001 {
-                revertAttempts += 1
-                if revertAttempts >= maxRevertAttempts {
-                    rmDebug("🔊 listener: revert not holding at \(String(format: "%.3f", current)) — adopting as baseline")
-                    baselineVolume = current
-                    lastRevertObserved = nil
-                    revertAttempts = 0
-                    return
-                }
-            } else {
-                lastRevertObserved = current
-                revertAttempts = 0
-            }
             rmDebug("🔊 listener: reverting \(String(format: "%.3f", current)) → \(String(format: "%.3f", baseline))")
             SystemVolume.set(baseline)
             return
