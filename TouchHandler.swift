@@ -168,10 +168,15 @@ class TouchHandler {
         let pinnedID = UserDefaults.standard.string(forKey: "trackpadDeviceID")
             .flatMap(Self.parseDeviceID)
 
-        // Auto-select: among non-built-in MT devices, choose the SMALLEST sensor surface.
-        // The Siri Remote's pad is tiny (~3460x3640) next to a Magic Trackpad
-        // (~15600x11040), and "first non-built-in" wrongly binds the trackpad on
-        // desktop Macs that have no built-in trackpad to filter out.
+        // Auto-select: only a device whose surface geometry matches the Siri Remote's known
+        // touch surface (RemoteTouchSurface.isEligibleRemoteSurface) is eligible. This is the
+        // touch-path analogue of RemoteDetector.isSiriRemote's vendor/product-ID match for the
+        // HID button path — MTDevice exposes no vendor/product ID, so surface size is the
+        // identity signal instead. A Magic Trackpad (or any other multitouch device) never
+        // qualifies, so it is never opened and its swipes never become gesture commands.
+        // Fails closed: if no candidate qualifies, no device is selected at all — better to
+        // miss a genuine remote (rare, and it will be picked up on the next scan) than to
+        // silently adopt an unrelated trackpad as "the remote".
         var chosen: (dev: MTDevice, area: Int64)? = nil
         for dev in deviceList {
             var devID: UInt64 = 0
@@ -186,8 +191,9 @@ class TouchHandler {
                 startDevice(dev)
                 return
             }
-            guard pinnedID == nil, !builtIn else { continue }
-            let area: Int64 = (w > 0 && h > 0) ? Int64(w) * Int64(h) : Int64.max
+            guard pinnedID == nil else { continue }
+            guard RemoteTouchSurface.isEligibleRemoteSurface(width: w, height: h, builtIn: builtIn) else { continue }
+            let area = Int64(w) * Int64(h)
             if chosen == nil || area < chosen!.area {
                 chosen = (dev, area)
             }
@@ -196,11 +202,11 @@ class TouchHandler {
             startDevice(chosen.dev)
             return
         }
-        // Fallback: use second device if available
-        if deviceList.count > 1 {
-            startDevice(deviceList[1])
-        } else if device != nil {
-            // Clear stale ref so next checkAndReconnect will retry when the remote reappears in the list.
+        // No eligible remote-sized surface found (and no pin matched): fail closed, do not
+        // guess at a fallback device.
+        if device != nil {
+            // Previously-selected device no longer qualifies or disappeared from the list;
+            // clear the stale ref so the next checkAndReconnect retries when the remote reappears.
             stopDevice()
         }
     }

@@ -18,6 +18,7 @@ SWIFT_FILES=(
     "MediaController.swift"
     "MediaKeyInterceptor.swift"
     "TouchHandler.swift"
+    "RemoteTouchSurface.swift"
     "SystemVolume.swift"
 )
 
